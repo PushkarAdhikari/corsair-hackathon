@@ -339,10 +339,18 @@ export default function Dashboard() {
       {/* Toast Alert */}
       {toast && (
         <div className={`fixed top-5 right-5 z-50 flex items-center gap-3 px-5 py-3.5 rounded-xl border backdrop-blur-lg shadow-2xl transition-all duration-300 animate-slide-in ${toast.type === "success"
-          ? "bg-[#064e3b]/90 border-emerald-500/30 text-emerald-200"
-          : "bg-[#4c0519]/90 border-rose-500/30 text-rose-200"
+          ? "bg-[#064e3b]/90 border-emerald-500/30 text-emerald-200 shadow-emerald-950/20"
+          : "bg-[#4c0519]/90 border-rose-500/30 text-rose-200 shadow-rose-950/20"
           }`}>
-          <span className="text-lg">{toast.type === "success" ? "✓" : "⚠"}</span>
+          {toast.type === "success" ? (
+            <svg className="h-4 w-4 text-emerald-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          ) : (
+            <svg className="h-4 w-4 text-rose-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          )}
           <p className="text-xs font-semibold tracking-wide">{toast.message}</p>
         </div>
       )}
@@ -350,7 +358,7 @@ export default function Dashboard() {
       {/* ==================================================== */}
       {/* 1. LEFT SIDEBAR */}
       {/* ==================================================== */}
-      <aside className="w-[240px] border-r border-[#1e1e24] flex flex-col justify-between shrink-0 bg-[#0c0c0f] z-10">
+      <aside className="w-[240px] border-r border-white/[0.05] flex flex-col justify-between shrink-0 bg-[#0c0c0f] z-10">
         <div>
           {/* Logo & Branding */}
           <div className="p-6 pb-8">
@@ -369,12 +377,12 @@ export default function Dashboard() {
           </div>
 
           {/* Navigation Links */}
-          <nav className="px-3 space-y-1">
+          <nav className="px-3 space-y-1.5">
             <button
               onClick={() => { setActiveTab("all-inbox"); }}
-              className={`w-full flex items-center justify-between px-3.5 py-2 rounded-lg text-xs font-medium transition-all duration-200 ${activeTab === "all-inbox"
-                ? "bg-gradient-to-r from-indigo-500/10 to-transparent text-white border-l-2 border-indigo-500 pl-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.03)]"
-                : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.02]"
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 ease-in-out active:scale-[0.98] border ${activeTab === "all-inbox"
+                ? "bg-indigo-500/10 border-indigo-500/30 text-white shadow-[inset_0_1px_1px_rgba(255,255,255,0.02)]"
+                : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.02] border-transparent"
                 }`}
             >
               <div className="flex items-center gap-2.5">
@@ -390,9 +398,9 @@ export default function Dashboard() {
 
             <button
               onClick={() => { setActiveTab("priority-inbox"); }}
-              className={`w-full flex items-center justify-between px-3.5 py-2 rounded-lg text-xs font-medium transition-all duration-200 ${activeTab === "priority-inbox"
-                ? "bg-gradient-to-r from-indigo-500/10 to-transparent text-white border-l-2 border-indigo-500 pl-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.03)]"
-                : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.02]"
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 ease-in-out active:scale-[0.98] border ${activeTab === "priority-inbox"
+                ? "bg-indigo-500/10 border-indigo-500/30 text-white shadow-[inset_0_1px_1px_rgba(255,255,255,0.02)]"
+                : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.02] border-transparent"
                 }`}
             >
               <div className="flex items-center gap-2.5">
@@ -408,9 +416,9 @@ export default function Dashboard() {
 
             <button
               onClick={() => { setActiveTab("calendar-agenda"); }}
-              className={`w-full flex items-center justify-between px-3.5 py-2 rounded-lg text-xs font-medium transition-all duration-200 ${activeTab === "calendar-agenda"
-                ? "bg-gradient-to-r from-indigo-500/10 to-transparent text-white border-l-2 border-indigo-500 pl-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.03)]"
-                : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.02]"
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 ease-in-out active:scale-[0.98] border ${activeTab === "calendar-agenda"
+                ? "bg-indigo-500/10 border-indigo-500/30 text-white shadow-[inset_0_1px_1px_rgba(255,255,255,0.02)]"
+                : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.02] border-transparent"
                 }`}
             >
               <div className="flex items-center gap-2.5">
@@ -423,9 +431,9 @@ export default function Dashboard() {
 
             <button
               onClick={() => { setActiveTab("mcp-agent"); }}
-              className={`w-full flex items-center justify-between px-3.5 py-2 rounded-lg text-xs font-medium transition-all duration-200 ${activeTab === "mcp-agent"
-                ? "bg-gradient-to-r from-indigo-500/10 to-transparent text-white border-l-2 border-indigo-500 pl-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.03)]"
-                : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.02]"
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 ease-in-out active:scale-[0.98] border ${activeTab === "mcp-agent"
+                ? "bg-indigo-500/10 border-indigo-500/30 text-white shadow-[inset_0_1px_1px_rgba(255,255,255,0.02)]"
+                : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.02] border-transparent"
                 }`}
             >
               <div className="flex items-center gap-2.5">
@@ -439,9 +447,9 @@ export default function Dashboard() {
 
             <button
               onClick={() => { setActiveTab("settings"); }}
-              className={`w-full flex items-center justify-between px-3.5 py-2 rounded-lg text-xs font-medium transition-all duration-200 ${activeTab === "settings"
-                ? "bg-gradient-to-r from-indigo-500/10 to-transparent text-white border-l-2 border-indigo-500 pl-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.03)]"
-                : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.02]"
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 ease-in-out active:scale-[0.98] border ${activeTab === "settings"
+                ? "bg-indigo-500/10 border-indigo-500/30 text-white shadow-[inset_0_1px_1px_rgba(255,255,255,0.02)]"
+                : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.02] border-transparent"
                 }`}
             >
               <div className="flex items-center gap-2.5">
@@ -456,7 +464,7 @@ export default function Dashboard() {
         </div>
 
         {/* Integration Setup Flags at bottom */}
-        <div className="p-5 border-t border-[#1a1b26] bg-[#09090c]">
+        <div className="p-5 border-t border-white/[0.05] bg-[#09090b]">
           <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-3">Integrations</p>
           <div className="space-y-2.5">
             <div className="flex items-center justify-between text-[11px]">
