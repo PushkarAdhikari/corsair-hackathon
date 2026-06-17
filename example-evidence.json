@@ -1,0 +1,24 @@
+{
+  "metadata": {
+    "title": "Example Security Assessment",
+    "issuer": "Your Organization",
+    "date": "2026-06-16",
+    "scope": "Production Environment"
+  },
+  "controls": [
+    {
+      "id": "MFA-001",
+      "description": "Multi-factor authentication enabled",
+      "status": "pass",
+      "evidence": "MFA enforced for all user groups",
+      "framework": "NIST-800-53",
+      "controlId": "IA-2"
+    },
+    {
+      "id": "ENC-001",
+      "description": "Data at rest encrypted",
+      "status": "pass",
+      "evidence": "AES-256 encryption verified"
+    }
+  ]
+}
