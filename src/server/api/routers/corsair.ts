@@ -16,6 +16,13 @@ if (!globalForEmbeddings.cache) {
   globalForEmbeddings.cache = new Map<string, number[]>();
 }
 
+const globalForPriorityCache = globalThis as unknown as {
+  cache: Map<string, "high" | "medium" | "low">;
+};
+if (!globalForPriorityCache.cache) {
+  globalForPriorityCache.cache = new Map<string, "high" | "medium" | "low">();
+}
+
 export const corsairRouter = createTRPCRouter({
   getGmailMessages: publicProcedure
     .input(z.object({ limit: z.number().optional().default(10) }))
@@ -46,10 +53,22 @@ export const corsairRouter = createTRPCRouter({
         const apiKey = process.env.GEMINI_API_KEY;
         const priorityMap: Record<string, "high" | "medium" | "low"> = {};
 
-        if (apiKey && detailedMessages.length > 0) {
+        // Filter out emails that have already been classified
+        const unclassifiedMessages = detailedMessages.filter((msg) => {
+          const m = msg as { id?: string };
+          const id = m.id ?? "";
+          if (!id) return false;
+          if (globalForPriorityCache.cache.has(id)) {
+            priorityMap[id] = globalForPriorityCache.cache.get(id)!;
+            return false;
+          }
+          return true;
+        });
+
+        if (apiKey && unclassifiedMessages.length > 0) {
           try {
             const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-            const emailSummaryList = detailedMessages.map((msg) => {
+            const emailSummaryList = unclassifiedMessages.map((msg) => {
               const m = msg as { id?: string; snippet?: string; payload?: { headers?: Array<{ name: string; value: string }> } };
               const headers = m.payload?.headers ?? [];
               const subject = headers.find((h) => h.name.toLowerCase() === "subject")?.value ?? "(No Subject)";
@@ -107,6 +126,7 @@ Output ONLY a valid JSON object matching this schema:
               if (parsed.priorities && Array.isArray(parsed.priorities)) {
                 parsed.priorities.forEach((p) => {
                   priorityMap[p.id] = p.priority;
+                  globalForPriorityCache.cache.set(p.id, p.priority);
                 });
               }
             }
@@ -188,6 +208,27 @@ Output ONLY a valid JSON object matching this schema:
           };
         });
 
+        // Sort messages by date descending (newest first)
+        const parseDateVal = (val: string | number | Date | null | undefined): Date => {
+          if (!val) return new Date();
+          if (val instanceof Date) return val;
+          if (typeof val === "number") return new Date(val);
+          if (typeof val === "string") {
+            if (/^\d+$/.test(val)) {
+              return new Date(parseInt(val, 10));
+            }
+            const d = new Date(val);
+            if (!isNaN(d.getTime())) return d;
+          }
+          return new Date();
+        };
+
+        messages.sort((a, b) => {
+          const dateA = parseDateVal(a.internalDate).getTime();
+          const dateB = parseDateVal(b.internalDate).getTime();
+          return dateB - dateA;
+        });
+
         // Perform Advanced search filters (from, subject)
         if (input.from) {
           const fromQuery = input.from.toLowerCase();
@@ -235,8 +276,11 @@ Output ONLY a valid JSON object matching this schema:
                 return dot / (Math.sqrt(normA) * Math.sqrt(normB));
               };
 
+              // Limit semantic search check to top 25 messages to avoid API rate exhaustion
+              const searchSubset = messages.slice(0, 25);
+
               const messagesWithScores = await Promise.all(
-                messages.map(async (msg) => {
+                searchSubset.map(async (msg) => {
                   const id = msg.id || "";
                   const contentText = `From: ${msg.from}. Subject: ${msg.subject}. Snippet: ${msg.snippet}`;
                   
