@@ -52,6 +52,9 @@ interface InboxViewProps {
   setSearchFrom: (val: string) => void;
   searchSubject: string;
   setSearchSubject: (val: string) => void;
+  loaderRef?: React.RefObject<HTMLDivElement | null>;
+  hasMore?: boolean;
+  isLoadingMore?: boolean;
 }
 
 export function InboxView({
@@ -76,6 +79,9 @@ export function InboxView({
   setSearchFrom,
   searchSubject,
   setSearchSubject,
+  loaderRef,
+  hasMore,
+  isLoadingMore,
 }: InboxViewProps) {
   const [isComposeOpen, setIsComposeOpen] = React.useState(false);
   const [composeTo, setComposeTo] = React.useState("");
@@ -430,6 +436,23 @@ export function InboxView({
                 </svg>
                 <p className="text-slate-400 text-xs font-semibold">No emails found in this account.</p>
                 <p className="text-[10px] text-slate-500 mt-1">Authorized Gmail account is empty.</p>
+              </div>
+            )}
+
+            {/* Infinite scroll trigger */}
+            {hasMore && emails.length > 0 && (
+              <div
+                ref={loaderRef}
+                className="flex items-center justify-center py-6"
+              >
+                {isLoadingMore ? (
+                  <div className="flex items-center gap-2 text-xs text-slate-500">
+                    <div className="animate-spin rounded-full h-3.5 w-3.5 border border-indigo-500/20 border-t-indigo-500" />
+                    Loading more...
+                  </div>
+                ) : (
+                  <div className="text-[10px] text-slate-600 font-mono">~ scroll for more ~</div>
+                )}
               </div>
             )}
           </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { api } from "@/trpc/react";
 import { InboxView } from "./_components/InboxView";
 import { CalendarAgendaView } from "./_components/CalendarAgendaView";
@@ -141,12 +141,66 @@ export default function Dashboard() {
     localStorage.setItem("corsair_calendarClientSecret", calendarClientSecret);
   }, [calendarClientSecret]);
 
-  // Live queries
-  const { data: liveGmailData, isLoading: liveGmailLoading } =
-    api.corsair.getGmailMessages.useQuery({ limit: 10 }, {
+  // Paginated Gmail state
+  const PAGE_SIZE = 10;
+  const [allMessages, setAllMessages] = useState<GmailMessage[]>([]);
+  const [pageToken, setPageToken] = useState<string | undefined>(undefined);
+  const [hasMore, setHasMore] = useState(true);
+  const isLoadingMoreRef = useRef(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const loaderRef = useRef<HTMLDivElement>(null);
+
+  const { data: liveGmailData, isLoading: liveGmailLoading, dataUpdatedAt: gmailUpdatedAt } =
+    api.corsair.getGmailMessages.useQuery({ limit: PAGE_SIZE, pageToken: undefined }, {
       retry: false,
       refetchOnWindowFocus: false,
     });
+
+  // Reset accumulated messages when first page refreshes
+  useEffect(() => {
+    if (liveGmailData) {
+      setAllMessages(liveGmailData.messages as GmailMessage[] ?? []);
+      setPageToken(liveGmailData.nextPageToken);
+      setHasMore(!!liveGmailData.nextPageToken);
+    }
+  }, [gmailUpdatedAt]);
+
+  const loadMoreMessages = useCallback(async () => {
+    if (!hasMore || isLoadingMoreRef.current || !pageToken) return;
+    isLoadingMoreRef.current = true;
+    setIsLoadingMore(true);
+    try {
+      const data = await utils.corsair.getGmailMessages.fetch({ limit: PAGE_SIZE, pageToken });
+      const newMessages = (data.messages ?? []) as GmailMessage[];
+      setAllMessages((prev) => {
+        const existingIds = new Set(prev.map((m) => m.id));
+        const unique = newMessages.filter((m) => m.id && !existingIds.has(m.id));
+        return [...prev, ...unique];
+      });
+      setPageToken(data.nextPageToken);
+      setHasMore(!!data.nextPageToken);
+    } catch (err) {
+      console.error("Error loading more messages:", err);
+    }
+    isLoadingMoreRef.current = false;
+    setIsLoadingMore(false);
+  }, [hasMore, pageToken, utils]);
+
+  // IntersectionObserver for infinite scroll
+  useEffect(() => {
+    const el = loaderRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && hasMore && !isLoadingMoreRef.current) {
+          void loadMoreMessages();
+        }
+      },
+      { threshold: 0.1 }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMore, loadMoreMessages]);
 
   const { data: liveCalendarData, isLoading: liveCalendarLoading } =
     api.corsair.getCalendarEvents.useQuery({ limit: 10 }, {
@@ -269,12 +323,30 @@ export default function Dashboard() {
     agentChatMutation.mutate({ messages: updatedMessages });
   };
 
-  // Keybindings listener for focus `/` shortcut
+  // Keybindings listener for focus `/` shortcut and tab switching
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "/" && document.activeElement !== searchInputRef.current) {
+      const target = e.target as HTMLElement;
+      const isInput = target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
+      if (isInput) return;
+
+      if (e.key === "/") {
         e.preventDefault();
         searchInputRef.current?.focus();
+        return;
+      }
+
+      const tabMap: Record<string, string> = {
+        "1": "all-inbox",
+        "2": "priority-inbox",
+        "3": "calendar-agenda",
+        "4": "mcp-agent",
+        "5": "settings",
+      };
+      const tab = tabMap[e.key];
+      if (tab) {
+        e.preventDefault();
+        setActiveTab(tab);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
@@ -303,7 +375,7 @@ export default function Dashboard() {
   // Process / merge Gmail threads
   const getProcessedEmails = (): GmailMessage[] => {
     const list: GmailMessage[] = [];
-    const sourceData = (isSearching ? searchedGmailData?.messages : liveGmailData?.messages) as GmailMessage[] | undefined;
+    const sourceData = (isSearching ? searchedGmailData?.messages : allMessages) as GmailMessage[] | undefined;
 
     // Append Gmail data if available
     if (sourceData) {
@@ -354,7 +426,7 @@ export default function Dashboard() {
 
   // Get counts for badges dynamically from loaded gmail messages
   const listForCounts: GmailMessage[] = [];
-  const messagesForCounts = liveGmailData?.messages as GmailMessage[] | undefined;
+  const messagesForCounts = isSearching ? (searchedGmailData?.messages as GmailMessage[] | undefined) : allMessages;
   if (messagesForCounts) {
     messagesForCounts.forEach((msg) => {
       if (listForCounts.some((m) => m.id === msg.id)) return;
@@ -425,7 +497,7 @@ export default function Dashboard() {
           <nav className="px-3 space-y-1.5">
             <button
               onClick={() => { setActiveTab("all-inbox"); }}
-              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 ease-in-out active:scale-[0.98] border ${activeTab === "all-inbox"
+              className={`group w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 ease-in-out active:scale-[0.98] border ${activeTab === "all-inbox"
                 ? "bg-indigo-500/10 border-indigo-500/30 text-white shadow-[inset_0_1px_1px_rgba(255,255,255,0.02)]"
                 : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.02] border-transparent"
                 }`}
@@ -436,14 +508,17 @@ export default function Dashboard() {
                 </svg>
                 <span>All Inbox</span>
               </div>
-              {allInboxUnread > 0 && (
-                <span className="bg-[#18182b] text-indigo-300 font-bold px-1.5 py-0.5 rounded text-[9px] border border-indigo-500/15">{allInboxUnread}</span>
-              )}
+              <div className="flex items-center gap-1.5">
+                {allInboxUnread > 0 && (
+                  <span className="bg-[#18182b] text-indigo-300 font-bold px-1.5 py-0.5 rounded text-[9px] border border-indigo-500/15">{allInboxUnread}</span>
+                )}
+                <kbd className="opacity-0 group-hover:opacity-40 transition-opacity text-[9px] text-slate-500 font-mono px-1.5 py-0.5 rounded border border-white/[0.06] bg-white/[0.02]">1</kbd>
+              </div>
             </button>
 
             <button
               onClick={() => { setActiveTab("priority-inbox"); }}
-              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 ease-in-out active:scale-[0.98] border ${activeTab === "priority-inbox"
+              className={`group w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 ease-in-out active:scale-[0.98] border ${activeTab === "priority-inbox"
                 ? "bg-indigo-500/10 border-indigo-500/30 text-white shadow-[inset_0_1px_1px_rgba(255,255,255,0.02)]"
                 : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.02] border-transparent"
                 }`}
@@ -454,14 +529,17 @@ export default function Dashboard() {
                 </svg>
                 <span>Priority Inbox</span>
               </div>
-              {priorityInboxUnread > 0 && (
-                <span className="bg-[#18182b] text-indigo-300 font-bold px-1.5 py-0.5 rounded text-[9px] border border-indigo-500/15">{priorityInboxUnread}</span>
-              )}
+              <div className="flex items-center gap-1.5">
+                {priorityInboxUnread > 0 && (
+                  <span className="bg-[#18182b] text-indigo-300 font-bold px-1.5 py-0.5 rounded text-[9px] border border-indigo-500/15">{priorityInboxUnread}</span>
+                )}
+                <kbd className="opacity-0 group-hover:opacity-40 transition-opacity text-[9px] text-slate-500 font-mono px-1.5 py-0.5 rounded border border-white/[0.06] bg-white/[0.02]">2</kbd>
+              </div>
             </button>
 
             <button
               onClick={() => { setActiveTab("calendar-agenda"); }}
-              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 ease-in-out active:scale-[0.98] border ${activeTab === "calendar-agenda"
+              className={`group w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 ease-in-out active:scale-[0.98] border ${activeTab === "calendar-agenda"
                 ? "bg-indigo-500/10 border-indigo-500/30 text-white shadow-[inset_0_1px_1px_rgba(255,255,255,0.02)]"
                 : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.02] border-transparent"
                 }`}
@@ -472,11 +550,12 @@ export default function Dashboard() {
                 </svg>
                 <span>Calendar Agenda</span>
               </div>
+              <kbd className="opacity-0 group-hover:opacity-40 transition-opacity text-[9px] text-slate-500 font-mono px-1.5 py-0.5 rounded border border-white/[0.06] bg-white/[0.02]">3</kbd>
             </button>
 
             <button
               onClick={() => { setActiveTab("mcp-agent"); }}
-              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 ease-in-out active:scale-[0.98] border ${activeTab === "mcp-agent"
+              className={`group w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 ease-in-out active:scale-[0.98] border ${activeTab === "mcp-agent"
                 ? "bg-indigo-500/10 border-indigo-500/30 text-white shadow-[inset_0_1px_1px_rgba(255,255,255,0.02)]"
                 : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.02] border-transparent"
                 }`}
@@ -487,12 +566,15 @@ export default function Dashboard() {
                 </svg>
                 <span>MCP Agent Chat</span>
               </div>
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500/50" />
+              <div className="flex items-center gap-1.5">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500/50" />
+                <kbd className="opacity-0 group-hover:opacity-40 transition-opacity text-[9px] text-slate-500 font-mono px-1.5 py-0.5 rounded border border-white/[0.06] bg-white/[0.02]">4</kbd>
+              </div>
             </button>
 
             <button
               onClick={() => { setActiveTab("settings"); }}
-              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 ease-in-out active:scale-[0.98] border ${activeTab === "settings"
+              className={`group w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 ease-in-out active:scale-[0.98] border ${activeTab === "settings"
                 ? "bg-indigo-500/10 border-indigo-500/30 text-white shadow-[inset_0_1px_1px_rgba(255,255,255,0.02)]"
                 : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.02] border-transparent"
                 }`}
@@ -504,6 +586,7 @@ export default function Dashboard() {
                 </svg>
                 <span>Settings & API</span>
               </div>
+              <kbd className="opacity-0 group-hover:opacity-40 transition-opacity text-[9px] text-slate-500 font-mono px-1.5 py-0.5 rounded border border-white/[0.06] bg-white/[0.02]">5</kbd>
             </button>
           </nav>
         </div>
@@ -615,6 +698,9 @@ export default function Dashboard() {
           setSearchFrom={setSearchFrom}
           searchSubject={searchSubject}
           setSearchSubject={setSearchSubject}
+          loaderRef={loaderRef}
+          hasMore={hasMore}
+          isLoadingMore={isLoadingMore}
         />
       )}
     </div>

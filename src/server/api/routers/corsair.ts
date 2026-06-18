@@ -25,19 +25,24 @@ if (!globalForPriorityCache.cache) {
 
 export const corsairRouter = createTRPCRouter({
   getGmailMessages: publicProcedure
-    .input(z.object({ limit: z.number().optional().default(10) }))
+    .input(z.object({
+      limit: z.number().optional().default(10),
+      pageToken: z.string().optional(),
+    }))
     .query(async ({ input }) => {
       try {
         const client = corsair.withTenant("pushkar");
         const res = await client.gmail.api.messages.list({
           maxResults: input.limit,
+          pageToken: input.pageToken,
         });
 
+        const nextPageToken = (res as { nextPageToken?: string }).nextPageToken;
+
         if (!res.messages || res.messages.length === 0) {
-          return { messages: [] };
+          return { messages: [], nextPageToken: undefined };
         }
 
-        // Fetch details for each message to get subjects, snippets, dates, and headers
         const detailedMessages = await Promise.all(
           res.messages.map(async (msg) => {
             if (!msg.id) return msg;
@@ -53,7 +58,6 @@ export const corsairRouter = createTRPCRouter({
         const apiKey = process.env.GEMINI_API_KEY;
         const priorityMap: Record<string, "high" | "medium" | "low"> = {};
 
-        // Filter out emails that have already been classified
         const unclassifiedMessages = detailedMessages.filter((msg) => {
           const m = msg as { id?: string };
           const id = m.id ?? "";
@@ -129,6 +133,8 @@ Output ONLY a valid JSON object matching this schema:
                   globalForPriorityCache.cache.set(p.id, p.priority);
                 });
               }
+            } else if (response.status === 429) {
+              console.warn("Gemini rate-limited during email classification");
             }
           } catch (classifyErr) {
             console.error("Error classifying email priorities via LLM:", classifyErr);
@@ -145,8 +151,8 @@ Output ONLY a valid JSON object matching this schema:
         });
 
         return {
-          ...res,
           messages: messagesWithPriority,
+          nextPageToken: nextPageToken ?? undefined,
         };
       } catch (err) {
         console.error("Error fetching Gmail messages:", err);
@@ -256,7 +262,13 @@ Output ONLY a valid JSON object matching this schema:
                   content: { parts: [{ text }] },
                 }),
               });
-              if (!res.ok) throw new Error("Failed to fetch query embedding");
+              if (!res.ok) {
+                if (res.status === 429) {
+                  console.warn("Gemini rate-limited during embedding");
+                  return undefined;
+                }
+                throw new Error("Failed to fetch query embedding");
+              }
               const resData = (await res.json()) as { embedding?: { values: number[] } };
               return resData.embedding?.values;
             };
@@ -682,7 +694,9 @@ Be concise, professional, and friendly. After calling a tool, explain the outcom
 
       // 3. Define tool execution mapping
       const executeTool = async (name: string, args: Record<string, unknown>) => {
-        console.log(`[MCP Agent] Executing tool ${name} with args:`, args);
+        if (process.env.NODE_ENV !== "production") {
+          console.log(`[MCP Agent] Executing tool: ${name}`);
+        }
         try {
           switch (name) {
             case "list_emails": {
