@@ -2,6 +2,20 @@ import { z } from "zod";
 import { createTRPCRouter, publicProcedure } from "@/server/api/trpc";
 import { corsair } from "@/server/corsair";
 
+interface CalendarAttendee {
+  email?: string;
+  displayName?: string;
+  responseStatus?: "accepted" | "declined" | "tentative" | "needsAction";
+  self?: boolean;
+}
+
+const globalForEmbeddings = globalThis as unknown as {
+  cache: Map<string, number[]>;
+};
+if (!globalForEmbeddings.cache) {
+  globalForEmbeddings.cache = new Map<string, number[]>();
+}
+
 export const corsairRouter = createTRPCRouter({
   getGmailMessages: publicProcedure
     .input(z.object({ limit: z.number().optional().default(10) }))
@@ -29,12 +43,238 @@ export const corsairRouter = createTRPCRouter({
           })
         );
 
+        const apiKey = process.env.GEMINI_API_KEY;
+        const priorityMap: Record<string, "high" | "medium" | "low"> = {};
+
+        if (apiKey && detailedMessages.length > 0) {
+          try {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+            const emailSummaryList = detailedMessages.map((msg) => {
+              const m = msg as { id?: string; snippet?: string; payload?: { headers?: Array<{ name: string; value: string }> } };
+              const headers = m.payload?.headers ?? [];
+              const subject = headers.find((h) => h.name.toLowerCase() === "subject")?.value ?? "(No Subject)";
+              const from = headers.find((h) => h.name.toLowerCase() === "from")?.value ?? "Unknown";
+              return {
+                id: m.id ?? "",
+                from,
+                subject,
+                snippet: m.snippet ?? "",
+              };
+            });
+
+            const systemPrompt = `You are a smart email sorting assistant. Classify the priority of each email into 'high', 'medium', or 'low'.
+Priority Guidelines:
+- 'high': Direct questions from people, work-related action items, calendar invites, or urgent status updates.
+- 'medium': Newsletters, updates from platforms that are mildly relevant, general communications.
+- 'low': Cold marketing outreach, automated notification logs, promotional items, spam.
+
+Output ONLY a valid JSON object matching this schema:
+{
+  "priorities": [
+    { "id": "email_id", "priority": "high" | "medium" | "low" }
+  ]
+}`;
+
+            const response = await fetch(url, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                contents: [
+                  {
+                    role: "user",
+                    parts: [{ text: `Classify these emails:\n${JSON.stringify(emailSummaryList, null, 2)}` }],
+                  },
+                ],
+                systemInstruction: {
+                  parts: [{ text: systemPrompt }],
+                },
+              }),
+            });
+
+            if (response.ok) {
+              const data = (await response.json()) as {
+                candidates?: Array<{
+                  content?: {
+                    parts?: Array<{
+                      text?: string;
+                    }>;
+                  };
+                }>;
+              };
+              let text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
+              text = text.replace(/```json/g, "").replace(/```/g, "").trim();
+              const parsed = JSON.parse(text) as { priorities?: Array<{ id: string; priority: "high" | "medium" | "low" }> };
+              if (parsed.priorities && Array.isArray(parsed.priorities)) {
+                parsed.priorities.forEach((p) => {
+                  priorityMap[p.id] = p.priority;
+                });
+              }
+            }
+          } catch (classifyErr) {
+            console.error("Error classifying email priorities via LLM:", classifyErr);
+          }
+        }
+
+        const messagesWithPriority = detailedMessages.map((msg) => {
+          const m = msg as { id?: string };
+          const id = m.id ?? "";
+          return {
+            ...msg,
+            priority: priorityMap[id] ?? "low",
+          };
+        });
+
         return {
           ...res,
-          messages: detailedMessages,
+          messages: messagesWithPriority,
         };
       } catch (err) {
         console.error("Error fetching Gmail messages:", err);
+        throw err;
+      }
+    }),
+
+  searchGmailMessages: publicProcedure
+    .input(
+      z.object({
+        query: z.string().optional().default(""),
+        semantic: z.boolean().optional().default(false),
+        from: z.string().optional(),
+        subject: z.string().optional(),
+      })
+    )
+    .query(async ({ input }) => {
+      try {
+        const apiKey = process.env.GEMINI_API_KEY;
+
+        // Fetch cached emails from corsairEntities
+        const { db } = await import("@/server/db/index");
+        const { corsairEntities } = await import("@/server/db/schema");
+        const { eq } = await import("drizzle-orm");
+
+        const cached = await db
+          .select()
+          .from(corsairEntities)
+          .where(eq(corsairEntities.entityType, "gmail.message"));
+
+        // Map cached entities to usable message objects
+        let messages = cached.map((c) => {
+          const data = c.data as {
+            id?: string;
+            threadId?: string;
+            snippet?: string;
+            internalDate?: string | number;
+            priority?: "high" | "medium" | "low";
+            labelIds?: string[];
+            payload?: {
+              headers?: Array<{ name: string; value: string }>;
+            };
+          };
+          const headers = data.payload?.headers ?? [];
+          const subjectVal = headers.find((h) => h.name.toLowerCase() === "subject")?.value ?? "(No Subject)";
+          const fromVal = headers.find((h) => h.name.toLowerCase() === "from")?.value ?? "Unknown";
+          
+          return {
+            id: data.id ?? c.entityId,
+            threadId: data.threadId ?? "",
+            snippet: data.snippet ?? "",
+            internalDate: data.internalDate ?? "",
+            priority: data.priority ?? "low",
+            starred: data.labelIds?.includes("STARRED") ?? false,
+            payload: data.payload,
+            labelIds: data.labelIds ?? [],
+            subject: subjectVal,
+            from: fromVal,
+          };
+        });
+
+        // Perform Advanced search filters (from, subject)
+        if (input.from) {
+          const fromQuery = input.from.toLowerCase();
+          messages = messages.filter((m) => m.from.toLowerCase().includes(fromQuery));
+        }
+
+        if (input.subject) {
+          const subjectQuery = input.subject.toLowerCase();
+          messages = messages.filter((m) => m.subject.toLowerCase().includes(subjectQuery));
+        }
+
+        const trimmedQuery = input.query.trim();
+
+        // Perform Vector Search or Text Search
+        if (trimmedQuery !== "") {
+          if (input.semantic && apiKey) {
+            // Get embedding for query
+            const getEmbedding = async (text: string) => {
+              const url = `https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key=${apiKey}`;
+              const res = await fetch(url, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  model: "models/text-embedding-004",
+                  content: { parts: [{ text }] },
+                }),
+              });
+              if (!res.ok) throw new Error("Failed to fetch query embedding");
+              const resData = (await res.json()) as { embedding?: { values: number[] } };
+              return resData.embedding?.values;
+            };
+
+            const queryVector = await getEmbedding(trimmedQuery);
+
+            if (queryVector) {
+              const cosSimilarity = (a: number[], b: number[]) => {
+                let dot = 0;
+                let normA = 0;
+                let normB = 0;
+                for (let i = 0; i < a.length; i++) {
+                  dot += a[i]! * b[i]!;
+                  normA += a[i]! * a[i]!;
+                  normB += b[i]! * b[i]!;
+                }
+                return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+              };
+
+              const messagesWithScores = await Promise.all(
+                messages.map(async (msg) => {
+                  const id = msg.id || "";
+                  const contentText = `From: ${msg.from}. Subject: ${msg.subject}. Snippet: ${msg.snippet}`;
+                  
+                  let vector = globalForEmbeddings.cache.get(id);
+                  if (!vector) {
+                    try {
+                      vector = await getEmbedding(contentText);
+                      if (vector) globalForEmbeddings.cache.set(id, vector);
+                    } catch {
+                      // fallback
+                    }
+                  }
+
+                  const score = vector ? cosSimilarity(queryVector, vector) : 0;
+                  return { ...msg, score };
+                })
+              );
+
+              // Sort by cosine similarity descending
+              messages = messagesWithScores
+                .filter((m) => m.score > 0.1) // threshold
+                .sort((a, b) => b.score - a.score);
+            }
+          } else {
+            // Standard text query search
+            const q = trimmedQuery.toLowerCase();
+            messages = messages.filter(
+              (m) =>
+                m.subject.toLowerCase().includes(q) ||
+                m.from.toLowerCase().includes(q) ||
+                m.snippet.toLowerCase().includes(q)
+            );
+          }
+        }
+
+        return { messages };
+      } catch (err) {
+        console.error("Error searching cached emails:", err);
         throw err;
       }
     }),
@@ -167,11 +407,24 @@ Use the current reference time: ${currentTime}. Do not add any markdown blocks o
           throw new Error(`Gemini API error: ${res.statusText} (${errText})`);
         }
 
-        const data = await res.json();
-        let rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+        const data = (await res.json()) as {
+          candidates?: Array<{
+            content?: {
+              parts?: Array<{
+                text?: string;
+              }>;
+            };
+          }>;
+        };
+        let rawText = data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
         rawText = rawText.replace(/```json/g, "").replace(/```/g, "").trim();
         
-        const parsed = JSON.parse(rawText);
+        const parsed = JSON.parse(rawText) as {
+          summary?: string;
+          description?: string;
+          startDateTime?: string;
+          endDateTime?: string;
+        };
         if (!parsed.summary || !parsed.startDateTime || !parsed.endDateTime) {
           throw new Error("Failed to parse event details from text.");
         }
@@ -179,7 +432,7 @@ Use the current reference time: ${currentTime}. Do not add any markdown blocks o
         const created = await client.googlecalendar.api.events.create({
           event: {
             summary: parsed.summary,
-            description: parsed.description || "",
+            description: parsed.description ?? "",
             start: {
               dateTime: parsed.startDateTime,
             },
@@ -205,9 +458,16 @@ Use the current reference time: ${currentTime}. Do not add any markdown blocks o
     .mutation(async ({ input }) => {
       try {
         const client = corsair.withTenant("pushkar");
-        const event = await client.googlecalendar.api.events.get({ id: input.id });
+        const event = (await client.googlecalendar.api.events.get({ id: input.id })) as {
+          summary?: string;
+          description?: string;
+          location?: string;
+          start?: { date?: string; dateTime?: string; timeZone?: string };
+          end?: { date?: string; dateTime?: string; timeZone?: string };
+          attendees?: CalendarAttendee[];
+        };
         
-        const updatedAttendees = event.attendees?.map((attendee: any) => {
+        const updatedAttendees = event.attendees?.map((attendee: CalendarAttendee) => {
           if (attendee.self) {
             return {
               ...attendee,
@@ -215,14 +475,14 @@ Use the current reference time: ${currentTime}. Do not add any markdown blocks o
             };
           }
           return attendee;
-        }) || [];
+        }) ?? [];
 
         const res = await client.googlecalendar.api.events.update({
           id: input.id,
           event: {
-            summary: event.summary,
-            description: event.description,
-            location: event.location,
+            summary: event.summary ?? "",
+            description: event.description ?? "",
+            location: event.location ?? "",
             start: event.start,
             end: event.end,
             attendees: updatedAttendees,
@@ -330,6 +590,13 @@ Use the current reference time: ${currentTime}. Do not add any markdown blocks o
                     type: "STRING",
                     description: "The end date and time in ISO format (e.g. '2026-06-25T10:00:00Z')",
                   },
+                  attendees: {
+                    type: "ARRAY",
+                    description: "Optional array of invitees/attendees email addresses (e.g. ['friend@corsair.dev'])",
+                    items: {
+                      type: "STRING",
+                    },
+                  },
                 },
                 required: ["summary", "start_time", "end_time"],
               },
@@ -355,17 +622,18 @@ Be concise, professional, and friendly. After calling a tool, explain the outcom
       const chatHistory = [...input.messages];
 
       // 3. Define tool execution mapping
-      const executeTool = async (name: string, args: any) => {
+      const executeTool = async (name: string, args: Record<string, unknown>) => {
         console.log(`[MCP Agent] Executing tool ${name} with args:`, args);
         try {
           switch (name) {
             case "list_emails": {
-              const q = args.query;
-              const limit = args.limit ?? 5;
+              const q = typeof args.query === "string" ? args.query : undefined;
+              const limit = typeof args.limit === "number" ? args.limit : 5;
               const res = await client.gmail.api.messages.list({ q, maxResults: limit });
-              if (!res.messages || res.messages.length === 0) return { messages: [] };
+              const messagesList = (res.messages ?? []) as Array<{ id?: string }>;
               const detailed = await Promise.all(
-                res.messages.map(async (msg: any) => {
+                messagesList.map(async (msg) => {
+                  if (!msg.id) return msg;
                   try {
                     return await client.gmail.api.messages.get({ id: msg.id });
                   } catch {
@@ -376,7 +644,9 @@ Be concise, professional, and friendly. After calling a tool, explain the outcom
               return { messages: detailed };
             }
             case "send_email": {
-              const { to, subject, body } = args;
+              const to = typeof args.to === "string" ? args.to : "";
+              const subject = typeof args.subject === "string" ? args.subject : "";
+              const body = typeof args.body === "string" ? args.body : "";
               const emailContent = [
                 `To: ${to}`,
                 `Subject: ${subject}`,
@@ -389,7 +659,7 @@ Be concise, professional, and friendly. After calling a tool, explain the outcom
               return await client.gmail.api.messages.send({ raw });
             }
             case "list_calendar_events": {
-              const limit = args.limit ?? 5;
+              const limit = typeof args.limit === "number" ? args.limit : 5;
               return await client.googlecalendar.api.events.getMany({
                 calendarId: "primary",
                 maxResults: limit,
@@ -398,22 +668,30 @@ Be concise, professional, and friendly. After calling a tool, explain the outcom
               });
             }
             case "create_calendar_event": {
-              const { summary, description, start_time, end_time } = args;
+              const summary = typeof args.summary === "string" ? args.summary : "";
+              const description = typeof args.description === "string" ? args.description : "";
+              const start_time = typeof args.start_time === "string" ? args.start_time : "";
+              const end_time = typeof args.end_time === "string" ? args.end_time : "";
+              const rawAttendees = Array.isArray(args.attendees) ? args.attendees : undefined;
+              const attendees = rawAttendees?.map((email) => ({ email: String(email) }));
+
               return await client.googlecalendar.api.events.create({
                 event: {
                   summary,
                   description,
                   start: { dateTime: start_time },
                   end: { dateTime: end_time },
+                  attendees,
                 },
               });
             }
             default:
               throw new Error(`Unknown tool: ${name}`);
           }
-        } catch (err: any) {
+        } catch (err) {
+          const errorMsg = err instanceof Error ? err.message : "Failed to execute tool command";
           console.error(`Error executing tool ${name}:`, err);
-          return { error: err.message || "Failed to execute tool command" };
+          return { error: errorMsg };
         }
       };
 
@@ -438,7 +716,20 @@ Be concise, professional, and friendly. After calling a tool, explain the outcom
           throw new Error(`Gemini API error: ${res.statusText} (${errText})`);
         }
 
-        const data = await res.json();
+        const data = (await res.json()) as {
+          candidates?: Array<{
+            content?: {
+              role?: "model" | "user" | "function";
+              parts?: Array<{
+                text?: string;
+                functionCall?: {
+                  name: string;
+                  args: Record<string, unknown>;
+                };
+              }>;
+            };
+          }>;
+        };
         const candidate = data.candidates?.[0];
 
         if (!candidate?.content) {
@@ -446,14 +737,17 @@ Be concise, professional, and friendly. After calling a tool, explain the outcom
         }
 
         const modelMessage = candidate.content;
-        chatHistory.push(modelMessage);
+        chatHistory.push({
+          role: modelMessage.role ?? "model",
+          parts: modelMessage.parts ?? [],
+        });
 
-        const functionCalls = modelMessage.parts?.filter((p: any) => p.functionCall);
+        const functionCalls = modelMessage.parts?.filter((p) => p.functionCall) ?? [];
 
-        if (functionCalls && functionCalls.length > 0) {
-          const toolParts: any[] = [];
+        if (functionCalls.length > 0) {
+          const toolParts: unknown[] = [];
           for (const call of functionCalls) {
-            const { name, args } = call.functionCall;
+            const { name, args } = call.functionCall!;
             const result = await executeTool(name, args);
             toolParts.push({
               functionResponse: {
@@ -471,7 +765,7 @@ Be concise, professional, and friendly. After calling a tool, explain the outcom
           // No more function calls, returning final chatHistory update
           return {
             messages: chatHistory,
-            responseText: modelMessage.parts?.map((p: any) => p.text).join("") || "",
+            responseText: modelMessage.parts?.map((p) => p.text ?? "").join("") ?? "",
           };
         }
       }
@@ -480,12 +774,38 @@ Be concise, professional, and friendly. After calling a tool, explain the outcom
       const lastModelText = chatHistory
         .filter((m) => m.role === "model")
         .pop()
-        ?.parts?.map((p: any) => p.text)
-        .join("");
+        ?.parts?.map((p) => {
+          const part = p as { text?: string };
+          return part.text ?? "";
+        })
+        .join("") ?? "";
 
       return {
         messages: chatHistory,
         responseText: lastModelText || "Agent loop completed without a text response.",
       };
+    }),
+
+  getNewEventsCount: publicProcedure
+    .input(z.object({ since: z.string().optional() }))
+    .query(async ({ input }) => {
+      try {
+        const { db } = await import("@/server/db/index");
+        const { corsairEvents } = await import("@/server/db/schema");
+        const { gt } = await import("drizzle-orm");
+
+        if (!input.since) return { count: 0, since: input.since };
+        const sinceDate = new Date(input.since);
+        
+        const events = await db
+          .select()
+          .from(corsairEvents)
+          .where(gt(corsairEvents.createdAt, sinceDate));
+
+        return { count: events.length, since: input.since };
+      } catch (err) {
+        console.error("Error querying new webhook events:", err);
+        return { count: 0, since: input.since };
+      }
     }),
 });

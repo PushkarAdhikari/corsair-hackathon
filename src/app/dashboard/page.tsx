@@ -12,10 +12,38 @@ interface GmailMessage {
   threadId?: string;
   snippet?: string;
   internalDate?: string | number | Date | null;
-  payload?: any;
+  payload?: {
+    headers?: Array<{ name: string; value: string }>;
+    body?: {
+      data?: string;
+    };
+    parts?: Array<{
+      mimeType?: string;
+      body?: {
+        data?: string;
+      };
+      parts?: Array<{
+        mimeType?: string;
+        body?: {
+          data?: string;
+        };
+      }>;
+    }>;
+  };
   priority?: "high" | "medium" | "low";
   starred?: boolean;
   labelIds?: string[];
+}
+
+interface ChatMessage {
+  role: "user" | "model" | "function";
+  parts: Array<{
+    text?: string;
+    functionCall?: {
+      name: string;
+      args: Record<string, unknown>;
+    };
+  }>;
 }
 
 export default function Dashboard() {
@@ -28,6 +56,12 @@ export default function Dashboard() {
   // Selected Item states
   const [selectedEmailId, setSelectedEmailId] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const [searchSemantic, setSearchSemantic] = useState<boolean>(false);
+  const [searchFrom, setSearchFrom] = useState<string>("");
+  const [searchSubject, setSearchSubject] = useState<string>("");
+
+  // Webhook polling state (stores last updated timestamp)
+  const [lastCheckTime, setLastCheckTime] = useState<string>(() => new Date().toISOString());
 
   // Modals / Interactive state
   const [starredIds, setStarredIds] = useState<Set<string>>(new Set());
@@ -120,6 +154,42 @@ export default function Dashboard() {
       refetchOnWindowFocus: false,
     });
 
+  const isSearching = searchQuery.trim() !== "" || searchFrom.trim() !== "" || searchSubject.trim() !== "";
+
+  const { data: searchedGmailData, isLoading: searchedGmailLoading } =
+    api.corsair.searchGmailMessages.useQuery(
+      {
+        query: searchQuery,
+        semantic: searchSemantic,
+        from: searchFrom,
+        subject: searchSubject,
+      },
+      {
+        enabled: isSearching,
+        retry: false,
+        refetchOnWindowFocus: false,
+      }
+    );
+
+  const { data: pollData } = api.corsair.getNewEventsCount.useQuery(
+    { since: lastCheckTime },
+    {
+      refetchInterval: 5000, // Poll every 5 seconds
+      retry: false,
+      refetchOnWindowFocus: false,
+    }
+  );
+
+  useEffect(() => {
+    if (pollData && pollData.count > 0 && pollData.since === lastCheckTime) {
+      showToast(`Realtime webhook: Synced ${pollData.count} new items!`, "success");
+      void utils.corsair.getGmailMessages.invalidate();
+      void utils.corsair.getCalendarEvents.invalidate();
+      void utils.corsair.searchGmailMessages.invalidate();
+      setLastCheckTime(new Date().toISOString());
+    }
+  }, [pollData, lastCheckTime, utils]);
+
   // Mutations
   const sendMailMutation = api.corsair.sendGmailMessage.useMutation({
     onSuccess: async () => {
@@ -164,7 +234,7 @@ export default function Dashboard() {
     },
   });
 
-  const [chatMessages, setChatMessages] = useState<any[]>([]);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -184,10 +254,10 @@ export default function Dashboard() {
   }, [chatMessages]);
 
   const handleAgentChatSubmit = (textToSubmit?: string) => {
-    const text = textToSubmit || chatInput;
+    const text = textToSubmit ?? chatInput;
     if (!text.trim()) return;
 
-    const newUserMessage = {
+    const newUserMessage: ChatMessage = {
       role: "user" as const,
       parts: [{ text: text.trim() }],
     };
@@ -216,7 +286,7 @@ export default function Dashboard() {
     setTimeout(() => setToast(null), 4000);
   };
 
-  const parseDateVal = (val: any): Date => {
+  const parseDateVal = (val: string | number | Date | null | undefined): Date => {
     if (!val) return new Date();
     if (val instanceof Date) return val;
     if (typeof val === "number") return new Date(val);
@@ -233,29 +303,23 @@ export default function Dashboard() {
   // Process / merge Gmail threads
   const getProcessedEmails = (): GmailMessage[] => {
     const list: GmailMessage[] = [];
+    const sourceData = (isSearching ? searchedGmailData?.messages : liveGmailData?.messages) as GmailMessage[] | undefined;
 
-    // Append live Gmail data if available
-    if (liveGmailData?.messages) {
-      liveGmailData.messages.forEach((msg: any) => {
+    // Append Gmail data if available
+    if (sourceData) {
+      sourceData.forEach((msg) => {
         // Prevent duplicate IDs
         if (list.some((m) => m.id === msg.id)) return;
-
-        const headers = msg.payload?.headers || [];
-        const subject = headers.find((h: any) => h.name.toLowerCase() === "subject")?.value || "(No Subject)";
-
-        const isImportant = msg.labelIds?.includes("IMPORTANT") ||
-          subject.toLowerCase().includes("urgent") ||
-          subject.toLowerCase().includes("important");
 
         list.push({
           id: msg.id,
           threadId: msg.threadId,
-          snippet: msg.snippet || "",
+          snippet: msg.snippet ?? "",
           internalDate: msg.internalDate,
-          priority: isImportant ? "high" : "low",
-          starred: msg.labelIds?.includes("STARRED") || false,
+          priority: msg.priority ?? "low",
+          starred: msg.labelIds?.includes("STARRED") ?? false,
           payload: msg.payload,
-          labelIds: msg.labelIds || [],
+          labelIds: msg.labelIds ?? [],
         });
       });
     }
@@ -264,21 +328,6 @@ export default function Dashboard() {
     let filteredList = list;
     if (activeTab === "priority-inbox") {
       filteredList = list.filter((m) => m.priority === "high");
-    }
-
-    // Filter by Search Query
-    if (searchQuery.trim() !== "") {
-      const q = searchQuery.toLowerCase();
-      filteredList = filteredList.filter((m) => {
-        const headers = m.payload?.headers || [];
-        const subject = headers.find((h: any) => h.name.toLowerCase() === "subject")?.value || "";
-        const from = headers.find((h: any) => h.name.toLowerCase() === "from")?.value || "";
-        return (
-          subject.toLowerCase().includes(q) ||
-          from.toLowerCase().includes(q) ||
-          m.snippet?.toLowerCase().includes(q)
-        );
-      });
     }
 
     // Sort by Date descending
@@ -305,24 +354,20 @@ export default function Dashboard() {
 
   // Get counts for badges dynamically from loaded gmail messages
   const listForCounts: GmailMessage[] = [];
-  if (liveGmailData?.messages) {
-    liveGmailData.messages.forEach((msg: any) => {
+  const messagesForCounts = liveGmailData?.messages as GmailMessage[] | undefined;
+  if (messagesForCounts) {
+    messagesForCounts.forEach((msg) => {
       if (listForCounts.some((m) => m.id === msg.id)) return;
-      const headers = msg.payload?.headers || [];
-      const subject = headers.find((h: any) => h.name.toLowerCase() === "subject")?.value || "";
-      const isImportant = msg.labelIds?.includes("IMPORTANT") ||
-        subject.toLowerCase().includes("urgent") ||
-        subject.toLowerCase().includes("important");
 
       listForCounts.push({
         id: msg.id,
         threadId: msg.threadId,
-        snippet: msg.snippet || "",
+        snippet: msg.snippet ?? "",
         internalDate: msg.internalDate,
-        priority: isImportant ? "high" : "low",
-        starred: msg.labelIds?.includes("STARRED") || false,
+        priority: msg.priority ?? "low",
+        starred: msg.labelIds?.includes("STARRED") ?? false,
         payload: msg.payload,
-        labelIds: msg.labelIds || [],
+        labelIds: msg.labelIds ?? [],
       });
     });
   }
@@ -550,7 +595,7 @@ export default function Dashboard() {
       ) : (
         <InboxView
           emails={emails}
-          liveGmailLoading={liveGmailLoading}
+          liveGmailLoading={liveGmailLoading || searchedGmailLoading}
           gmailConnected={gmailConnected}
           isSandboxMode={isSandboxMode}
           selectedEmailId={selectedEmailId}
@@ -564,6 +609,12 @@ export default function Dashboard() {
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
           searchInputRef={searchInputRef}
+          searchSemantic={searchSemantic}
+          setSearchSemantic={setSearchSemantic}
+          searchFrom={searchFrom}
+          setSearchFrom={setSearchFrom}
+          searchSubject={searchSubject}
+          setSearchSubject={setSearchSubject}
         />
       )}
     </div>

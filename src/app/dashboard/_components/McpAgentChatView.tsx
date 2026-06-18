@@ -2,8 +2,19 @@
 
 import React from "react";
 
+interface ChatMessage {
+  role: "user" | "model" | "function";
+  parts: Array<{
+    text?: string;
+    functionCall?: {
+      name: string;
+      args: Record<string, unknown>;
+    };
+  }>;
+}
+
 interface McpAgentChatViewProps {
-  chatMessages: any[];
+  chatMessages: ChatMessage[];
   chatInput: string;
   setChatInput: (val: string) => void;
   isPending: boolean;
@@ -57,7 +68,7 @@ export function McpAgentChatView({
             <h3 className="text-sm font-semibold text-white tracking-wide">Meet your Command Center Agent</h3>
 
             <p className="text-[11px] text-slate-400 leading-relaxed max-w-sm mt-3 font-medium">
-              Using Corsair's Model Context Protocol (MCP), I have full permission-gated access to Gmail and Google Calendar. You can tell me to schedule meetings, compose drafts, or check invites in plain English!
+              Using Corsair&apos;s Model Context Protocol (MCP), I have full permission-gated access to Gmail and Google Calendar. You can tell me to schedule meetings, compose drafts, or check invites in plain English!
             </p>
 
             {/* Suggested Prompts */}
@@ -93,10 +104,10 @@ export function McpAgentChatView({
           // Active chat messages
           <div className="space-y-4 max-w-2xl mx-auto w-full pr-1">
             {chatMessages
-              .filter((msg) => msg.role === "user" || (msg.role === "model" && msg.parts?.some((p: any) => p.text)))
+              .filter((msg) => msg.role === "user" || (msg.role === "model" && msg.parts?.some((p) => p.text)))
               .map((msg, index) => {
                 const isUser = msg.role === "user";
-                const text = msg.parts?.map((p: any) => p.text).join("") || "";
+                const text = msg.parts?.map((p) => p.text ?? "").join("") ?? "";
                 return (
                   <div
                     key={index}

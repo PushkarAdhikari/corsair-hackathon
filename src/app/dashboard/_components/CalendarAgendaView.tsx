@@ -46,8 +46,8 @@ interface CalendarAgendaViewProps {
 export function CalendarAgendaView({
   liveCalendarData,
   liveCalendarLoading,
-  calendarConnected,
-  isSandboxMode,
+  calendarConnected: _calendarConnected,
+  isSandboxMode: _isSandboxMode,
   selectedEventId,
   setSelectedEventId,
   quickAddText,
@@ -64,16 +64,16 @@ export function CalendarAgendaView({
     <div className="flex flex-row h-full w-full overflow-hidden">
       {/* Center Area of Calendar Page */}
       <div className="flex-grow flex flex-col justify-center items-center p-8 overflow-y-auto">
-        {selectedEventId && liveCalendarData?.items?.find((e: any) => e.id === selectedEventId) ? (
+        {selectedEventId && liveCalendarData?.items?.find((e) => e.id === selectedEventId) ? (
           (() => {
-            const event = liveCalendarData?.items?.find((e: any) => e.id === selectedEventId);
-            if (!event || !event.id) return null;
-            const startVal = event.start?.dateTime || event.start?.date;
-            const endVal = event.end?.dateTime || event.end?.date;
+            const event = liveCalendarData?.items?.find((e) => e.id === selectedEventId);
+            if (!event?.id) return null;
+            const startVal = event.start?.dateTime ?? event.start?.date;
+            const endVal = event.end?.dateTime ?? event.end?.date;
             const dateStart = startVal ? new Date(startVal) : new Date();
             const dateEnd = endVal ? new Date(endVal) : new Date();
-            const userAttendee = event.attendees?.find((a: any) => a.self);
-            const status = userAttendee?.responseStatus || "needsAction";
+            const userAttendee = event.attendees?.find((a) => a.self);
+            const status = userAttendee?.responseStatus ?? "needsAction";
 
             return (
               <div className="max-w-2xl w-full bg-[#0e0e11] border border-white/[0.06] rounded-2xl p-8 space-y-6 shadow-2xl shadow-black/40 relative">
@@ -103,7 +103,7 @@ export function CalendarAgendaView({
                       {status === "needsAction" ? "Needs Action" : status.toUpperCase()}
                     </span>
                   </div>
-                  <h2 className="text-2xl font-bold text-white leading-tight">{event.summary || "(No Title)"}</h2>
+                  <h2 className="text-2xl font-bold text-white leading-tight">{event.summary ?? "(No Title)"}</h2>
                 </div>
 
                 {/* Timestamps & Details Card */}
@@ -132,7 +132,7 @@ export function CalendarAgendaView({
                 <div className="space-y-1.5">
                   <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Event Description</p>
                   <p className="text-xs text-slate-300 leading-relaxed font-medium bg-white/[0.01] border border-white/[0.04] rounded-xl p-4 min-h-[80px] whitespace-pre-wrap">
-                    {event.description || "No description provided."}
+                    {event.description ?? "No description provided."}
                   </p>
                 </div>
 
@@ -141,9 +141,9 @@ export function CalendarAgendaView({
                   <div className="space-y-2">
                     <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Attendees ({event.attendees.length})</p>
                     <div className="max-h-[140px] overflow-y-auto space-y-1.5 pr-2">
-                      {event.attendees.map((attendee: any, idx: number) => (
+                      {event.attendees.map((attendee, idx: number) => (
                         <div key={idx} className="flex justify-between items-center bg-white/[0.01] border border-white/[0.04] px-3 py-2 rounded-xl text-xs hover:bg-white/[0.02] transition-colors duration-150">
-                          <span className="font-medium text-slate-200 line-clamp-1">{attendee.displayName || attendee.email}</span>
+                          <span className="font-medium text-slate-200 line-clamp-1">{attendee.displayName ?? attendee.email}</span>
                           <span className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded tracking-wide ${attendee.responseStatus === "accepted"
                             ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/15"
                             : attendee.responseStatus === "declined"
@@ -152,7 +152,7 @@ export function CalendarAgendaView({
                                 ? "bg-amber-500/10 text-amber-400 border border-amber-500/15"
                                 : "bg-slate-500/10 text-slate-400 border border-slate-500/15"
                             }`}>
-                            {attendee.responseStatus === "needsAction" ? "NEEDS ACTION" : attendee.responseStatus.toUpperCase()}
+                            {attendee.responseStatus === "needsAction" ? "NEEDS ACTION" : (attendee.responseStatus?.toUpperCase() ?? "")}
                           </span>
                         </div>
                       ))}
@@ -243,7 +243,7 @@ export function CalendarAgendaView({
             <svg className="h-4 w-4 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
             </svg>
-            <span className="text-xs font-semibold text-white tracking-wide">Today's Schedule</span>
+            <span className="text-xs font-semibold text-white tracking-wide">Today&apos;s Schedule</span>
           </div>
           <button
             type="button"
@@ -301,12 +301,12 @@ export function CalendarAgendaView({
               <p className="text-slate-500 text-xs font-semibold">No sync events found.</p>
             </div>
           ) : (
-            liveCalendarData.items.map((event: any) => {
-              const startVal = event.start?.dateTime || event.start?.date;
+            liveCalendarData.items.map((event) => {
+              const startVal = event.start?.dateTime ?? event.start?.date;
               const dateObj = startVal ? new Date(startVal) : new Date();
               const isSelected = event.id === selectedEventId;
-              const userAttendee = event.attendees?.find((a: any) => a.self);
-              const status = userAttendee?.responseStatus || "needsAction";
+              const userAttendee = event.attendees?.find((a) => a.self);
+              const status = userAttendee?.responseStatus ?? "needsAction";
 
               const timeStr = dateObj.toLocaleTimeString("en-US", {
                 hour: "2-digit",
@@ -317,7 +317,7 @@ export function CalendarAgendaView({
               return (
                 <div
                   key={event.id}
-                  onClick={() => setSelectedEventId(event.id || "")}
+                  onClick={() => setSelectedEventId(event.id ?? "")}
                   className={`p-4 rounded-xl border transition-all duration-200 cursor-pointer flex flex-col gap-2.5 ${isSelected
                     ? "bg-indigo-500/10 border-indigo-500/50 shadow-[inset_0_1px_1px_rgba(255,255,255,0.02)]"
                     : "bg-white/[0.01] border-white/[0.04] hover:bg-white/[0.03] hover:border-white/[0.08]"
@@ -340,8 +340,8 @@ export function CalendarAgendaView({
 
                   {/* Title & Description */}
                   <div>
-                    <h4 className="text-xs font-semibold text-white leading-snug line-clamp-1">{event.summary || "(No Title)"}</h4>
-                    <p className="text-[11px] text-slate-400 leading-normal line-clamp-2 mt-1 font-medium">{event.description || "No description."}</p>
+                    <h4 className="text-xs font-semibold text-white leading-snug line-clamp-1">{event.summary ?? "(No Title)"}</h4>
+                    <p className="text-[11px] text-slate-400 leading-normal line-clamp-2 mt-1 font-medium">{event.description ?? "No description."}</p>
                   </div>
 
                   {/* Join & RSVP actions */}

@@ -22,4 +22,5 @@ const main = async () => {
     console.log(res);
 }
 
-main();
+void main();
+
