@@ -385,7 +385,7 @@ Output ONLY a valid JSON object matching this schema:
           singleEvents: true,
           orderBy: "startTime",
         });
-        const items = res.items as Array<{ id?: string }> | undefined;
+        const items = res.items;
         const seen = new Set<string>();
         const deduped = items?.filter((event) => {
           if (!event.id) return true;

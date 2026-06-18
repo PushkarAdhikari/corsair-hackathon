@@ -159,10 +159,11 @@ export default function Dashboard() {
   // Reset accumulated messages when first page refreshes
   useEffect(() => {
     if (liveGmailData) {
-      setAllMessages(liveGmailData.messages as GmailMessage[] ?? []);
+      setAllMessages((liveGmailData.messages ?? []) as GmailMessage[]);
       setPageToken(liveGmailData.nextPageToken);
       setHasMore(!!liveGmailData.nextPageToken);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gmailUpdatedAt]);
 
   const loadMoreMessages = useCallback(async () => {
@@ -375,7 +376,7 @@ export default function Dashboard() {
   // Process / merge Gmail threads
   const getProcessedEmails = (): GmailMessage[] => {
     const list: GmailMessage[] = [];
-    const sourceData = (isSearching ? searchedGmailData?.messages : allMessages) as GmailMessage[] | undefined;
+    const sourceData = isSearching ? searchedGmailData?.messages : allMessages;
 
     // Append Gmail data if available
     if (sourceData) {
@@ -449,25 +450,36 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-[#09090b] text-[#e2e8f0] font-sans overflow-hidden flex h-screen select-none">
-      {/* Background glow effects - Muted for professional matte layout */}
-      <div className="absolute top-0 left-1/4 w-[600px] h-[350px] rounded-full bg-indigo-950/5 blur-[120px] pointer-events-none z-0" />
-      <div className="absolute bottom-0 right-1/4 w-[400px] h-[400px] rounded-full bg-purple-950/5 blur-[120px] pointer-events-none z-0" />
+      {/* Animated background gradient orbs */}
+      <div className="absolute top-0 left-1/4 w-[600px] h-[350px] rounded-full bg-indigo-950/8 blur-[120px] pointer-events-none z-0 animate-pulse" style={{ animationDuration: "4s" }} />
+      <div className="absolute bottom-0 right-1/4 w-[400px] h-[400px] rounded-full bg-purple-950/8 blur-[120px] pointer-events-none z-0 animate-pulse" style={{ animationDuration: "5s", animationDelay: "1s" }} />
+
+      {/* Grid overlay */}
+      <div
+        className="absolute inset-0 opacity-[0.012] pointer-events-none z-0"
+        style={{
+          backgroundImage: `radial-gradient(circle at 1px 1px, rgba(255,255,255,0.3) 1px, transparent 0)`,
+          backgroundSize: "48px 48px",
+        }}
+      />
 
       {/* Toast Alert */}
       {toast && (
-        <div className={`fixed top-5 right-5 z-50 flex items-center gap-3 px-5 py-3.5 rounded-xl border backdrop-blur-lg shadow-2xl transition-all duration-300 animate-slide-in ${toast.type === "success"
+        <div className={`fixed top-5 right-5 z-50 flex items-center gap-3 px-5 py-3.5 rounded-xl border backdrop-blur-xl shadow-2xl animate-slide-in ${toast.type === "success"
           ? "bg-[#064e3b]/90 border-emerald-500/30 text-emerald-200 shadow-emerald-950/20"
           : "bg-[#4c0519]/90 border-rose-500/30 text-rose-200 shadow-rose-950/20"
           }`}>
-          {toast.type === "success" ? (
-            <svg className="h-4 w-4 text-emerald-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-            </svg>
-          ) : (
-            <svg className="h-4 w-4 text-rose-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-          )}
+          <div className={`p-0.5 rounded-full ${toast.type === "success" ? "bg-emerald-500/20" : "bg-rose-500/20"}`}>
+            {toast.type === "success" ? (
+              <svg className="h-4 w-4 text-emerald-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            ) : (
+              <svg className="h-4 w-4 text-rose-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            )}
+          </div>
           <p className="text-xs font-semibold tracking-wide">{toast.message}</p>
         </div>
       )}
@@ -475,145 +487,115 @@ export default function Dashboard() {
       {/* ==================================================== */}
       {/* 1. LEFT SIDEBAR */}
       {/* ==================================================== */}
-      <aside className="w-[240px] border-r border-white/[0.05] flex flex-col justify-between shrink-0 bg-[#0c0c0f] z-10">
+      <aside className="w-[240px] border-r border-white/[0.05] flex flex-col justify-between shrink-0 bg-[#0c0c0f] z-10 shadow-2xl shadow-black/20">
         <div>
           {/* Logo & Branding */}
           <div className="p-6 pb-8">
             <div className="flex items-center gap-3">
-              {/* Command Center Icon */}
-              <div className="h-8.5 w-8.5 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-md shadow-indigo-500/10">
-                <svg className="h-4.5 w-4.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/15 animate-pulse-glow">
+                <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
               </div>
               <div>
                 <h2 className="text-xs font-extrabold tracking-widest text-white uppercase leading-none">Command Center</h2>
-                <p className="text-[9px] text-slate-500 font-bold mt-1 uppercase tracking-wider">powered by Corsair</p>
+                <p className="text-[10px] text-slate-500 font-bold mt-1 uppercase tracking-wider">powered by Corsair</p>
               </div>
             </div>
           </div>
 
           {/* Navigation Links */}
-          <nav className="px-3 space-y-1.5">
-            <button
-              onClick={() => { setActiveTab("all-inbox"); }}
-              className={`group w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 ease-in-out active:scale-[0.98] border ${activeTab === "all-inbox"
-                ? "bg-indigo-500/10 border-indigo-500/30 text-white shadow-[inset_0_1px_1px_rgba(255,255,255,0.02)]"
-                : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.02] border-transparent"
-                }`}
-            >
-              <div className="flex items-center gap-2.5">
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                </svg>
-                <span>All Inbox</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                {allInboxUnread > 0 && (
-                  <span className="bg-[#18182b] text-indigo-300 font-bold px-1.5 py-0.5 rounded text-[9px] border border-indigo-500/15">{allInboxUnread}</span>
-                )}
-                <kbd className="opacity-0 group-hover:opacity-40 transition-opacity text-[9px] text-slate-500 font-mono px-1.5 py-0.5 rounded border border-white/[0.06] bg-white/[0.02]">1</kbd>
-              </div>
-            </button>
-
-            <button
-              onClick={() => { setActiveTab("priority-inbox"); }}
-              className={`group w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 ease-in-out active:scale-[0.98] border ${activeTab === "priority-inbox"
-                ? "bg-indigo-500/10 border-indigo-500/30 text-white shadow-[inset_0_1px_1px_rgba(255,255,255,0.02)]"
-                : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.02] border-transparent"
-                }`}
-            >
-              <div className="flex items-center gap-2.5">
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
-                </svg>
-                <span>Priority Inbox</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                {priorityInboxUnread > 0 && (
-                  <span className="bg-[#18182b] text-indigo-300 font-bold px-1.5 py-0.5 rounded text-[9px] border border-indigo-500/15">{priorityInboxUnread}</span>
-                )}
-                <kbd className="opacity-0 group-hover:opacity-40 transition-opacity text-[9px] text-slate-500 font-mono px-1.5 py-0.5 rounded border border-white/[0.06] bg-white/[0.02]">2</kbd>
-              </div>
-            </button>
-
-            <button
-              onClick={() => { setActiveTab("calendar-agenda"); }}
-              className={`group w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 ease-in-out active:scale-[0.98] border ${activeTab === "calendar-agenda"
-                ? "bg-indigo-500/10 border-indigo-500/30 text-white shadow-[inset_0_1px_1px_rgba(255,255,255,0.02)]"
-                : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.02] border-transparent"
-                }`}
-            >
-              <div className="flex items-center gap-2.5">
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                </svg>
-                <span>Calendar Agenda</span>
-              </div>
-              <kbd className="opacity-0 group-hover:opacity-40 transition-opacity text-[9px] text-slate-500 font-mono px-1.5 py-0.5 rounded border border-white/[0.06] bg-white/[0.02]">3</kbd>
-            </button>
-
-            <button
-              onClick={() => { setActiveTab("mcp-agent"); }}
-              className={`group w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 ease-in-out active:scale-[0.98] border ${activeTab === "mcp-agent"
-                ? "bg-indigo-500/10 border-indigo-500/30 text-white shadow-[inset_0_1px_1px_rgba(255,255,255,0.02)]"
-                : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.02] border-transparent"
-                }`}
-            >
-              <div className="flex items-center gap-2.5">
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-                </svg>
-                <span>MCP Agent Chat</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500/50" />
-                <kbd className="opacity-0 group-hover:opacity-40 transition-opacity text-[9px] text-slate-500 font-mono px-1.5 py-0.5 rounded border border-white/[0.06] bg-white/[0.02]">4</kbd>
-              </div>
-            </button>
-
-            <button
-              onClick={() => { setActiveTab("settings"); }}
-              className={`group w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 ease-in-out active:scale-[0.98] border ${activeTab === "settings"
-                ? "bg-indigo-500/10 border-indigo-500/30 text-white shadow-[inset_0_1px_1px_rgba(255,255,255,0.02)]"
-                : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.02] border-transparent"
-                }`}
-            >
-              <div className="flex items-center gap-2.5">
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-                <span>Settings & API</span>
-              </div>
-              <kbd className="opacity-0 group-hover:opacity-40 transition-opacity text-[9px] text-slate-500 font-mono px-1.5 py-0.5 rounded border border-white/[0.06] bg-white/[0.02]">5</kbd>
-            </button>
+          <nav className="px-3 space-y-1">
+            {([
+              { id: "all-inbox", label: "All Inbox", icon: "inbox", badge: allInboxUnread, kbd: "1", live: false } as const,
+              { id: "priority-inbox", label: "Priority Inbox", icon: "star", badge: priorityInboxUnread, kbd: "2", live: false } as const,
+              { id: "calendar-agenda", label: "Calendar Agenda", icon: "calendar", badge: 0, kbd: "3", live: false } as const,
+              { id: "mcp-agent", label: "MCP Agent Chat", icon: "chat", badge: 0, kbd: "4", live: true } as const,
+              { id: "settings", label: "Settings & API", icon: "settings", badge: 0, kbd: "5", live: false } as const,
+            ]).map((item) => {
+              const isActive = activeTab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => { setActiveTab(item.id); }}
+                  className={`group relative w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 active:scale-[0.98] ${
+                    isActive
+                      ? "bg-gradient-to-r from-indigo-500/12 to-indigo-500/5 border border-indigo-500/25 text-white shadow-[inset_0_1px_1px_rgba(255,255,255,0.02)]"
+                      : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.02] border border-transparent"
+                  }`}
+                >
+                  {isActive && (
+                    <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-full bg-gradient-to-b from-indigo-400 to-purple-400" />
+                  )}
+                  <div className="flex items-center gap-2.5">
+                    <div className={`p-0.5 rounded-md transition-colors duration-200 ${isActive ? "text-indigo-400" : "text-slate-500 group-hover:text-slate-300"}`}>
+                      {item.icon === "inbox" && (
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                        </svg>
+                      )}
+                      {item.icon === "star" && (
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+                        </svg>
+                      )}
+                      {item.icon === "calendar" && (
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                        </svg>
+                      )}
+                      {item.icon === "chat" && (
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                        </svg>
+                      )}
+                      {item.icon === "settings" && (
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                      )}
+                    </div>
+                    <span>{item.label}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    {item.badge > 0 && (
+                      <span className="bg-indigo-500/15 text-indigo-300 font-bold px-1.5 py-0.5 rounded-md text-[9px] border border-indigo-500/20 min-w-[18px] text-center">{item.badge}</span>
+                    )}
+                    {item.live && (
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500/50 animate-pulse" />
+                    )}
+                    <kbd className="opacity-0 group-hover:opacity-40 transition-opacity text-[9px] text-slate-500 font-mono px-1.5 py-0.5 rounded-md border border-white/[0.06] bg-white/[0.02]">{item.kbd}</kbd>
+                  </div>
+                </button>
+              );
+            })}
           </nav>
         </div>
 
-        {/* Integration Setup Flags at bottom */}
-        <div className="p-5 border-t border-white/[0.05] bg-[#09090b]">
-          <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-3">Integrations</p>
+        {/* Integration Status Footer */}
+        <div className="p-5 border-t border-white/[0.05] bg-gradient-to-t from-[#09090b] to-transparent">
+          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Integrations</p>
           <div className="space-y-2.5">
-            <div className="flex items-center justify-between text-[11px]">
-              <span className="text-slate-400 font-medium">Gmail API</span>
+            <div className="flex items-center justify-between text-[11px] group">
+              <span className="text-slate-400 font-medium group-hover:text-slate-300 transition-colors duration-200">Gmail API</span>
               <span className={`flex items-center gap-1.5 font-semibold px-2 py-0.5 rounded-full text-[9px] ${
                 gmailConnected 
                   ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/15" 
                   : "bg-amber-500/10 text-amber-400 border border-amber-500/15"
               }`}>
-                <span className={`h-1.5 w-1.5 rounded-full ${gmailConnected ? "bg-emerald-400" : "bg-amber-400"}`} /> 
+                <span className={`h-1.5 w-1.5 rounded-full ${gmailConnected ? "bg-emerald-400 animate-pulse" : "bg-amber-400"}`} /> 
                 {gmailConnected ? "Connected" : "Setup"}
               </span>
             </div>
-            <div className="flex items-center justify-between text-[11px]">
-              <span className="text-slate-400 font-medium">Google Calendar</span>
+            <div className="flex items-center justify-between text-[11px] group">
+              <span className="text-slate-400 font-medium group-hover:text-slate-300 transition-colors duration-200">Google Calendar</span>
               <span className={`flex items-center gap-1.5 font-semibold px-2 py-0.5 rounded-full text-[9px] ${
                 calendarConnected 
                   ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/15" 
                   : "bg-amber-500/10 text-amber-400 border border-amber-500/15"
               }`}>
-                <span className={`h-1.5 w-1.5 rounded-full ${calendarConnected ? "bg-emerald-400" : "bg-amber-400"}`} /> 
+                <span className={`h-1.5 w-1.5 rounded-full ${calendarConnected ? "bg-emerald-400 animate-pulse" : "bg-amber-400"}`} /> 
                 {calendarConnected ? "Connected" : "Setup"}
               </span>
             </div>
