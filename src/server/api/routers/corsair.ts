@@ -362,14 +362,26 @@ Output ONLY a valid JSON object matching this schema:
     .query(async ({ input }) => {
       try {
         const client = corsair.withTenant("pushkar");
+        const timeMinDate = new Date();
+        timeMinDate.setHours(0, 0, 0, 0);
+        const timeMaxDate = new Date(timeMinDate.getTime() + 30 * 24 * 60 * 60 * 1000);
         const res = await client.googlecalendar.api.events.getMany({
           calendarId: "primary",
-          timeMin: new Date(new Date().setHours(0, 0, 0, 0)).toISOString(),
+          timeMin: timeMinDate.toISOString(),
+          timeMax: timeMaxDate.toISOString(),
           maxResults: input.limit,
           singleEvents: true,
           orderBy: "startTime",
         });
-        return res;
+        const items = res.items as Array<{ id?: string }> | undefined;
+        const seen = new Set<string>();
+        const deduped = items?.filter((event) => {
+          if (!event.id) return true;
+          if (seen.has(event.id)) return false;
+          seen.add(event.id);
+          return true;
+        });
+        return { ...res, items: deduped ?? [] };
       } catch (err) {
         console.error("Error fetching Google Calendar events:", err);
         throw err;
@@ -447,6 +459,9 @@ Use the current reference time: ${currentTime}. Do not add any markdown blocks o
         });
 
         if (!res.ok) {
+          if (res.status === 429) {
+            throw new Error("AI service is temporarily rate-limited. Please wait about 30 seconds and try again.");
+          }
           const errText = await res.text();
           throw new Error(`Gemini API error: ${res.statusText} (${errText})`);
         }
@@ -756,8 +771,17 @@ Be concise, professional, and friendly. After calling a tool, explain the outcom
         });
 
         if (!res.ok) {
+          if (res.status === 429) {
+            return {
+              messages: chatHistory,
+              responseText: "The AI service is temporarily rate-limited. Please wait about 30 seconds, then send your message again.",
+            };
+          }
           const errText = await res.text();
-          throw new Error(`Gemini API error: ${res.statusText} (${errText})`);
+          return {
+            messages: chatHistory,
+            responseText: `AI service error: ${errText.slice(0, 200)}`,
+          };
         }
 
         const data = (await res.json()) as {
@@ -777,7 +801,10 @@ Be concise, professional, and friendly. After calling a tool, explain the outcom
         const candidate = data.candidates?.[0];
 
         if (!candidate?.content) {
-          throw new Error("Invalid response candidate from Gemini API");
+          return {
+            messages: chatHistory,
+            responseText: "AI service returned an unexpected response. Please try again.",
+          };
         }
 
         const modelMessage = candidate.content;

@@ -72,6 +72,7 @@ export function CalendarAgendaView({
             const endVal = event.end?.dateTime ?? event.end?.date;
             const dateStart = startVal ? new Date(startVal) : new Date();
             const dateEnd = endVal ? new Date(endVal) : new Date();
+            const isAllDay = !event.start?.dateTime && !!event.start?.date;
             const userAttendee = event.attendees?.find((a) => a.self);
             const status = userAttendee?.responseStatus ?? "needsAction";
 
@@ -114,7 +115,7 @@ export function CalendarAgendaView({
                       {dateStart.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" })}
                     </p>
                     <p className="text-[11px] text-slate-400 mt-0.5">
-                      {dateStart.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                      {isAllDay ? "All Day" : dateStart.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
                     </p>
                   </div>
                   <div>
@@ -123,7 +124,7 @@ export function CalendarAgendaView({
                       {dateEnd.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" })}
                     </p>
                     <p className="text-[11px] text-slate-400 mt-0.5">
-                      {dateEnd.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                      {isAllDay ? "All Day" : dateEnd.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
                     </p>
                   </div>
                 </div>
@@ -161,57 +162,65 @@ export function CalendarAgendaView({
                 )}
 
                 {/* RSVP Action Footer */}
-                <div className="flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-white/[0.06]">
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => respondEventMutate({ id: event.id!, responseStatus: "accepted" })}
-                      disabled={respondEventIsPending}
-                      className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 active:scale-[0.98] disabled:opacity-50 flex items-center gap-1.5 shadow-[inset_0_1px_1px_rgba(255,255,255,0.15)] shadow-md"
-                    >
-                      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                      </svg>
-                      <span>Accept</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => respondEventMutate({ id: event.id!, responseStatus: "tentative" })}
-                      disabled={respondEventIsPending}
-                      className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/20 px-4 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 active:scale-[0.98] disabled:opacity-50 flex items-center gap-1.5"
-                    >
-                      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
-                      </svg>
-                      <span>Maybe</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => respondEventMutate({ id: event.id!, responseStatus: "declined" })}
-                      disabled={respondEventIsPending}
-                      className="bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 px-4 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 active:scale-[0.98] disabled:opacity-50 flex items-center gap-1.5"
-                    >
-                      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                      <span>Decline</span>
-                    </button>
-                  </div>
+                {(userAttendee ?? !isAllDay) && (
+                  <div className="flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-white/[0.06]">
+                    <div className="flex gap-2">
+                      {userAttendee && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => respondEventMutate({ id: event.id!, responseStatus: "accepted" })}
+                            disabled={respondEventIsPending}
+                            className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 active:scale-[0.98] disabled:opacity-50 flex items-center gap-1.5 shadow-[inset_0_1px_1px_rgba(255,255,255,0.15)] shadow-md"
+                          >
+                            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                            </svg>
+                            <span>Accept</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => respondEventMutate({ id: event.id!, responseStatus: "tentative" })}
+                            disabled={respondEventIsPending}
+                            className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/20 px-4 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 active:scale-[0.98] disabled:opacity-50 flex items-center gap-1.5"
+                          >
+                            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
+                            </svg>
+                            <span>Maybe</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => respondEventMutate({ id: event.id!, responseStatus: "declined" })}
+                            disabled={respondEventIsPending}
+                            className="bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 px-4 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 active:scale-[0.98] disabled:opacity-50 flex items-center gap-1.5"
+                          >
+                            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                            <span>Decline</span>
+                          </button>
+                        </>
+                      )}
+                    </div>
 
-                  {/* Delete/Cancel Event */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (confirm("Are you sure you want to cancel/delete this event?")) {
-                        deleteEventMutate({ id: event.id! });
-                      }
-                    }}
-                    disabled={deleteEventIsPending}
-                    className="bg-transparent hover:bg-rose-500/10 text-slate-400 hover:text-rose-400 border border-transparent hover:border-rose-500/20 px-4 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 active:scale-[0.98] disabled:opacity-50"
-                  >
-                    Cancel Event
-                  </button>
-                </div>
+                    {/* Delete/Cancel Event */}
+                    {!isAllDay && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (confirm("Are you sure you want to cancel/delete this event?")) {
+                            deleteEventMutate({ id: event.id! });
+                          }
+                        }}
+                        disabled={deleteEventIsPending}
+                        className="bg-transparent hover:bg-rose-500/10 text-slate-400 hover:text-rose-400 border border-transparent hover:border-rose-500/20 px-4 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 active:scale-[0.98] disabled:opacity-50"
+                      >
+                        Cancel Event
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })()
@@ -300,19 +309,29 @@ export function CalendarAgendaView({
             <div className="p-6 text-center bg-white/[0.01] border border-white/[0.04] rounded-2xl">
               <p className="text-slate-500 text-xs font-semibold">No sync events found.</p>
             </div>
-          ) : (
-            liveCalendarData.items.map((event) => {
+          ) : (() => {
+            const seen = new Set<string>();
+            const renderItems = (liveCalendarData.items ?? []).filter((event) => {
+              if (!event.id) return true;
+              if (seen.has(event.id)) return false;
+              seen.add(event.id);
+              return true;
+            });
+            return renderItems.map((event) => {
               const startVal = event.start?.dateTime ?? event.start?.date;
               const dateObj = startVal ? new Date(startVal) : new Date();
               const isSelected = event.id === selectedEventId;
               const userAttendee = event.attendees?.find((a) => a.self);
               const status = userAttendee?.responseStatus ?? "needsAction";
+              const isAllDay = !event.start?.dateTime && !!event.start?.date;
 
-              const timeStr = dateObj.toLocaleTimeString("en-US", {
-                hour: "2-digit",
-                minute: "2-digit",
-                hour12: true,
-              });
+              const timeStr = isAllDay
+                ? "All Day"
+                : dateObj.toLocaleTimeString("en-US", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    hour12: true,
+                  });
 
               return (
                 <div
@@ -323,7 +342,6 @@ export function CalendarAgendaView({
                     : "bg-white/[0.01] border-white/[0.04] hover:bg-white/[0.03] hover:border-white/[0.08]"
                     }`}
                 >
-                  {/* Time & Badge */}
                   <div className="flex justify-between items-center select-none">
                     <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{timeStr}</span>
                     <span className={`text-[8px] font-extrabold uppercase px-1.5 py-0.5 rounded tracking-wide ${status === "accepted"
@@ -338,13 +356,11 @@ export function CalendarAgendaView({
                     </span>
                   </div>
 
-                  {/* Title & Description */}
                   <div>
                     <h4 className="text-xs font-semibold text-white leading-snug line-clamp-1">{event.summary ?? "(No Title)"}</h4>
                     <p className="text-[11px] text-slate-400 leading-normal line-clamp-2 mt-1 font-medium">{event.description ?? "No description."}</p>
                   </div>
 
-                  {/* Join & RSVP actions */}
                   <div className="flex justify-between items-center mt-1">
                     {event.hangoutLink ? (
                       <a
@@ -363,59 +379,60 @@ export function CalendarAgendaView({
                       <div className="text-[9px] text-slate-600 font-bold select-none">No meet link</div>
                     )}
 
-                    {/* RSVP Icons */}
-                    <div className="flex items-center gap-0.5">
-                      <button
-                        type="button"
-                        title="Accept Invite"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (event.id) respondEventMutate({ id: event.id, responseStatus: "accepted" });
-                        }}
-                        disabled={respondEventIsPending}
-                        className={`p-1.5 rounded hover:bg-white/[0.06] transition-all duration-150 ${status === "accepted" ? "text-emerald-400" : "text-slate-500 hover:text-slate-300"
-                          }`}
-                      >
-                        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                        </svg>
-                      </button>
-                      <button
-                        type="button"
-                        title="Decline Invite"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (event.id) respondEventMutate({ id: event.id, responseStatus: "declined" });
-                        }}
-                        disabled={respondEventIsPending}
-                        className={`p-1.5 rounded hover:bg-white/[0.06] transition-all duration-150 ${status === "declined" ? "text-rose-400" : "text-slate-500 hover:text-slate-300"
-                          }`}
-                      >
-                        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
-                      <button
-                        type="button"
-                        title="Maybe / Tentative"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (event.id) respondEventMutate({ id: event.id, responseStatus: "tentative" });
-                        }}
-                        disabled={respondEventIsPending}
-                        className={`p-1.5 rounded hover:bg-white/[0.06] transition-all duration-150 ${status === "tentative" ? "text-amber-400" : "text-slate-500 hover:text-slate-300"
-                          }`}
-                      >
-                        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-                        </svg>
-                      </button>
-                    </div>
+                    {userAttendee && (
+                      <div className="flex items-center gap-0.5">
+                        <button
+                          type="button"
+                          title="Accept Invite"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (event.id) respondEventMutate({ id: event.id, responseStatus: "accepted" });
+                          }}
+                          disabled={respondEventIsPending}
+                          className={`p-1.5 rounded hover:bg-white/[0.06] transition-all duration-150 ${status === "accepted" ? "text-emerald-400" : "text-slate-500 hover:text-slate-300"
+                            }`}
+                        >
+                          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                          </svg>
+                        </button>
+                        <button
+                          type="button"
+                          title="Decline Invite"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (event.id) respondEventMutate({ id: event.id, responseStatus: "declined" });
+                          }}
+                          disabled={respondEventIsPending}
+                          className={`p-1.5 rounded hover:bg-white/[0.06] transition-all duration-150 ${status === "declined" ? "text-rose-400" : "text-slate-500 hover:text-slate-300"
+                            }`}
+                        >
+                          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                        <button
+                          type="button"
+                          title="Maybe / Tentative"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (event.id) respondEventMutate({ id: event.id, responseStatus: "tentative" });
+                          }}
+                          disabled={respondEventIsPending}
+                          className={`p-1.5 rounded hover:bg-white/[0.06] transition-all duration-150 ${status === "tentative" ? "text-amber-400" : "text-slate-500 hover:text-slate-300"
+                            }`}
+                        >
+                          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                          </svg>
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               );
-            })
-          )}
+            });
+          })()}
         </div>
       </div>
     </div>

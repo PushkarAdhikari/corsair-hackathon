@@ -182,7 +182,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (pollData && pollData.count > 0 && pollData.since === lastCheckTime) {
-      showToast(`Realtime webhook: Synced ${pollData.count} new items!`, "success");
+      showToast(`Webhook: ${pollData.count} events processed`, "success");
       void utils.corsair.getGmailMessages.invalidate();
       void utils.corsair.getCalendarEvents.invalidate();
       void utils.corsair.searchGmailMessages.invalidate();
